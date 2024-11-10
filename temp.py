@@ -15,7 +15,7 @@ def main(input_model, use_official, verbose):
         # here, either we can use our own model or run through all official models; this can be done better with click later
         # TODO: potential functionality for our own model
 
-        official_models = [f"TinyStories-{n}M" for n in [1, 3, 8, 28, 33]]
+        official_models = [f"roneneldan/TinyStories-{n}M" for n in [1, 3, 8, 28, 33]]
         for model in official_models:
             model = AutoModelForCausalLM.from_pretrained(model)
             tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-125M")  # page 2 of paper
