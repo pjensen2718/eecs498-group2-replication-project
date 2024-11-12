@@ -1,6 +1,6 @@
 """Python script for testing functionalities."""
 
-import evaluation_gpt
+import evaluator
 
 
 def main():

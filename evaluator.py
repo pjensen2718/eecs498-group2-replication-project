@@ -11,6 +11,10 @@ from openai import OpenAI
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
+import re
+import csv
+import numpy as np
+
 model_name = "roneneldan/TinyStories-1M"
 model = AutoModelForCausalLM.from_pretrained(model_name)
 # model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-125M")
@@ -44,17 +48,29 @@ def generate_output(prompts, output_per_prompt=3):
             outputs[(i, prompt)].append(prompt + "***" + completion[1])
     return outputs
 
-prompts = [
-    "Once upon a time, in a big forest, there lived a rhinoceros named Roxy. Roxy loved to climb. She climbed trees, rocks, and",
-    "Once upon a time, in a small yard, there was a small daisy. The daisy had a name. Her name was",
-    "Once upon a time, there was a thoughtful girl named Sue. Sue loved to help her mom around",
-    "Once upon a time, there was a kind farmer. He had a big cow. The cow was",
-    "Once upon a time, there was a little girl named Lucy. She had a pet cat named Tom. They loved to play together in",
-    "Once upon a time, there was a little brown dog named Spot. He loved to play with his ball in",
-    "Once upon a time, there was a little boy named Tom. He loved to play with his red",
-    "Once upon a time, there was a big dog named Max. Max had a red collar that he wore",
-    "Once upon a time, there was a girl named Mia. Mia loved her jewelry. She had a big box full"
-]
+# prompts = [
+#     "Once upon a time, in a big forest, there lived a rhinoceros named Roxy. Roxy loved to climb. She climbed trees, rocks, and",
+#     "Once upon a time, in a small yard, there was a small daisy. The daisy had a name. Her name was",
+#     "Once upon a time, there was a thoughtful girl named Sue. Sue loved to help her mom around",
+#     "Once upon a time, there was a kind farmer. He had a big cow. The cow was",
+#     "Once upon a time, there was a little girl named Lucy. She had a pet cat named Tom. They loved to play together in",
+#     "Once upon a time, there was a little brown dog named Spot. He loved to play with his ball in",
+#     "Once upon a time, there was a little boy named Tom. He loved to play with his red",
+#     "Once upon a time, there was a big dog named Max. Max had a red collar that he wore",
+#     "Once upon a time, there was a girl named Mia. Mia loved her jewelry. She had a big box full"
+# ]
+
+prompts = []
+
+with open("prompts.csv", mode="r", newline='', encoding="utf-8") as file:
+    header = next(file)
+    reader = csv.reader(file)
+    for row in reader:
+        prompts.append(row[0])
+
+for prompt in prompts:
+    print(prompt)
+
 
 # Return two GPT prompts in the form
 def construct_prompt(story_completion):
@@ -115,10 +131,6 @@ def grade_completion_with_gpt(user_prompt_1, user_prompt_2):
 
     return response_1, response_2
 
-import re
-import csv
-import numpy as np
-
 output_file = "eval.csv"
 avg_scores = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float64)
 
@@ -162,4 +174,3 @@ with open(output_file, "w", newline='') as out:
     avg_scores /= num_completions
     print('Average scores [grammar, creativity, consistency, plot]:',avg_scores)
     print('Age group frequency:', age_groups.items())
-    
