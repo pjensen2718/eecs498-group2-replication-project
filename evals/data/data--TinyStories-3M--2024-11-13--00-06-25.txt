@@ -1,0 +1,9 @@
+Average scores:
+	Grammar: 4.611111111111111
+	Creativity: 5.366666666666666
+	Consistency: 3.7111111111111112
+	Plot: 3.8555555555555556
+Age groups:
+	C (6-7): 76
+	B (4-5): 11
+	D (8-9): 3
