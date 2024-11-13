@@ -1,0 +1,1 @@
+This folder contains error outputs during evaluation, i.e. if scores cannot be converted to floats, if the proper amount of scores are not provided, or if scores are not on a scale of 0-10. If an "err" file with the same timestamp as an "out" file does not exist, it is because it was manually deleted as it had no entries (no erroneous outputs).
