@@ -7,37 +7,45 @@ import time
 # from threading import Thread, RLock  # RLock to allow with statement
 
 import click
-import numpy as np
+import numpy as np 
 from openai import OpenAI
+import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
+
+
 # NOTE: the below could probably be made better by allowing an input dataset or reading from a file
-def get_prompts(dataset) -> list[str]:
+def get_prompts(prompts_path) -> list[str]:
     """Get prompts from dataset or pre-defined list."""
-    # TODO: consider making a csvfile that maps prompt_id to prompt, timestamped
-    return [
-        "Once upon a time, in a big forest, there lived a rhinoceros named Roxy. Roxy loved to climb. She climbed trees, rocks, and",
-        "Once upon a time, in a small yard, there was a small daisy. The daisy had a name. Her name was",
-        "Once upon a time, there was a thoughtful girl named Sue. Sue loved to help her mom around",
-        "Once upon a time, there was a kind farmer. He had a big cow. The cow was",
-        "Once upon a time, there was a little girl named Lucy. She had a pet cat named Tom. They loved to play together in",
-        "Once upon a time, there was a little brown dog named Spot. He loved to play with his ball in",
-        "Once upon a time, there was a little boy named Tom. He loved to play with his red",
-        "Once upon a time, there was a big dog named Max. Max had a red collar that he wore",
-        "Once upon a time, there was a girl named Mia. Mia loved her jewelry. She had a big box full"
-    ]
+    dataframe = pd.read_csv(prompts_path)
+    prompts = dataframe['prompt'].tolist()
+
+    return prompts
+
+    # # TODO: consider making a csvfile that maps prompt_id to prompt, timestamped
+    # return [
+    #     "Once upon a time, in a big forest, there lived a rhinoceros named Roxy. Roxy loved to climb. She climbed trees, rocks, and",
+    #     "Once upon a time, in a small yard, there was a small daisy. The daisy had a name. Her name was",
+    #     "Once upon a time, there was a thoughtful girl named Sue. Sue loved to help her mom around",
+    #     "Once upon a time, there was a kind farmer. He had a big cow. The cow was",
+    #     "Once upon a time, there was a little girl named Lucy. She had a pet cat named Tom. They loved to play together in",
+    #     "Once upon a time, there was a little brown dog named Spot. He loved to play with his ball in",
+    #     "Once upon a time, there was a little boy named Tom. He loved to play with his red",
+    #     "Once upon a time, there was a big dog named Max. Max had a red collar that he wore",
+    #     "Once upon a time, there was a girl named Mia. Mia loved her jewelry. She had a big box full"
+    # ]
 
 
-def intro(models: tuple[str], dataset: str, all_official: bool) -> list[str]:
+def intro(models: tuple[str], prompts_path: str, all_official: bool) -> list[str]:
     """Handle errors with options."""
     if models and all_official:
         sys.exit("Error: cannot both specify specific model \
                  and use all official models.")
-    if dataset:
+    if prompts_path:
         sys.exit("Error: functionality for user-defined dataset not implemented.")
     else:  # specific dataset not specified, use our default
-        return get_prompts(dataset)  # currently just returns a hard-coded list of strings
+        return get_prompts(prompts_path)  # currently just returns a hard-coded list of strings
 
 
 def gen_completions(model, tokenizer, prompt: str,
@@ -265,13 +273,13 @@ def evaluate_model(model_str: str, prompts: list[str], num_completions: int, ver
 
 @click.command()
 @click.option("-m", "--models", multiple=True, type=str, help="Select specific model to evaluate; can be used multiple times.")
-@click.option("-d", "--dataset", type=str, help="Specify dataset.")
+@click.option("-p", "--prompts_path", type=Path, default=Path("prompts.csv") help="Specify path to prompts file.")
 @click.option("-a", "--all_official", is_flag=True, help="Use all official models; redundant if specific model requested.")
-@click.option("-n", "--num_completions", default=10, help="Number of completions to be done by (each) model.")
+@click.option("-n", "--num_completions", default=4, help="Number of completions to be done by (each) model.")
 @click.option("-v", "--verbose", is_flag=True, help="Print verbose output.")
-def main(models, dataset, all_official, num_completions, verbose):
+def main(models, prompts_path, all_official, num_completions, verbose):
     """Main driver for evaluation script."""
-    prompts = intro(models, dataset, all_official)  # option error handling
+    prompts = intro(models, prompts_path, all_official)  # option error handling
 
     # currently, use this as "python3 temp.py -m roneneldan/TinyStories-1M"
 

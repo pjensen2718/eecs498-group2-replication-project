@@ -1,7 +1,7 @@
 """Python script for testing functionalities."""
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from temp import construct_prompt, gen_completions, gen_all_completions
+from evaluator import construct_prompt, gen_completions, gen_all_completions
 
 
 def main():

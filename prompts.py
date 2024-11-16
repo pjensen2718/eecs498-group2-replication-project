@@ -11,8 +11,8 @@ prompts = []
 
 for story in validation:
     spaces = [i for i, ch in enumerate(story) if ch == ' ' and i > 0 and story[i-1] != '.']
-    start = int(len(spaces) * 0.4)
-    end = int(len(spaces) * 0.6)
+    start = int(len(spaces) * 0.25)
+    end = int(len(spaces) * 0.3)
 
     idx = random.choice(spaces[start:end])
     prompts.append(story[:idx].replace("\n", ""))
