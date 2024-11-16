@@ -15,6 +15,21 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 
+
+
+def get_dataset(dataset: str) -> list[str]:
+    """Load dataset from CSV file."""
+    path = Path(dataset)
+    dataset = []
+    with open(path, "r", encoding="utf-8") as infile:
+        for row in infile:
+            dataset.append(row)
+    print(dataset)
+    sys.exit()
+    # newline???????
+    return dataset
+
+
 # NOTE: the below could probably be made better by allowing an input dataset or reading from a file
 def get_prompts(prompts_path) -> list[str]:
     """Get prompts from dataset or pre-defined list."""
@@ -54,7 +69,7 @@ def gen_completions(model, tokenizer, prompt: str,
     inputs = tokenizer(prompt, return_tensors="pt", padding=True)
     attention_mask = inputs['attention_mask']
 
-    # uses temperature = 1 by default  TODO: is temp of 1 correct???
+    # uses temperature = 1 by default; temp of 1 as per page 5
     outputs = model.generate(
         inputs['input_ids'],
         attention_mask=attention_mask,
@@ -134,7 +149,7 @@ def grade_completion_with_gpt(story_completion: str) -> tuple[str, str]:
         model="gpt-4o",  # cheaper than gpt-4
         messages=messages,
         max_completion_tokens=300,
-        temperature=1  # TODO: check this
+        temperature=1  # NOTE: a specific temp is never referenced in the paper
     )
     
     response_1 = response.choices[0].message.content
