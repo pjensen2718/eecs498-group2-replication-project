@@ -1,3 +1,5 @@
+"""Visualizes the attention heads an arbitrary TinyStories model."""
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -134,8 +136,6 @@ def main():
         # Attention -> tensor of shape [num_layers, batch_size, num_heads, len(input_seq), len(input_seq)]
     outputs = model(**inputs, output_attentions=True)
     attentions = outputs.attentions
-
-    # find_most_attended_to_tokens(attentions)
 
     plot_attention_heatmaps(attentions)
     

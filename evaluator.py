@@ -34,6 +34,7 @@ def intro(models: tuple[str], prompts_str: str, all_official: bool) -> list[str]
 def get_model(model_str: str, verbose: bool):
     """Get model from model_str."""
     # should we prompt for custom tokenizer?
+    if verbose: print(f"Loading model: {model_str}...")
     model = AutoModelForCausalLM.from_pretrained(model_str)
     model.eval()  # put the model into evaluation mode
     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-125M")  # page 2 of paper
@@ -63,7 +64,7 @@ def gen_completions(model, tokenizer, prompt: str,
 
 
 def get_all_completions(model, tokenizer, prompts: list[str],
-                        num_completions: int, verbose: bool) -> dict[tuple[int,str], list]:
+                        num_completions: int, verbose: bool, delimiter: str = "***") -> dict[tuple[int,str], list]:
     """Generate all completions from given prompts."""
     outputs = collections.defaultdict(list)
     for i, prompt in enumerate(prompts):
@@ -73,7 +74,7 @@ def get_all_completions(model, tokenizer, prompts: list[str],
             # partition rather than split for the edge case of the prompt
             # appearing in the completion
             output = completion.partition(prompt)
-            outputs[(i, prompt)].append(prompt + "***" + output[2])
+            outputs[(i, prompt)].append(prompt + delimiter + output[2])
     return outputs
 
 
@@ -100,49 +101,67 @@ def get_output_paths(model_str: str) -> tuple[Path, Path, Path]:
     return out_path, err_path, data_path
            
 
-# TODO: investigate abstraction for this for extensions
-def construct_prompt(story_completion: str) -> tuple[str, str]:
-    """Generate prompt to be forwarded to GPT-4o."""
+def construct_prompt(story_completion: str, prompt_1_skeleton: str,
+                     prompt_2: str) -> tuple[str, str]:
+    """
+    Generate prompt to be forwarded to GPT-4o.
+    A user can provide `prompt_1_skeleton` and `prompt_2` to be forwarded.
+    If a user-defined structure is given for prompt 1, use the string 'XXXXXXX'
+    to mark where the story completion should go.
+    """
     # TODO: This was changed in a way that makes each line less than 80 chars
     # However, this causes newlines to be present in input: does this affect the output?
-    user_prompt_1 = f"""
-    Your task is to evaluate the performance of a student. The student is 
-    given the following exercise. In the following exercise, the student is 
-    given a beginning of a story. The student needs to complete it into a full 
-    story. The exercise tests the student's language abilities and creativity. 
-    The symbol *** marks the separator between the prescribed beginning and 
-    the student's completion:
-    
-    The student wrote the following story:
+    user_prompt_1 = ""
+    user_prompt_2 = ""
+    if prompt_1_skeleton:
+        if "XXXXXXX" not in prompt_1_skeleton:
+            sys.exit(f"Prompt with skeleton `{prompt_1_skeleton}` \can't be \
+                     constructed.")
+        user_prompt_1 = re.sub("XXXXXXX", story_completion, prompt_1_skeleton)
 
-    {story_completion}
+    else:  # no structure given, use default
+        user_prompt_1 = f"""
+        Your task is to evaluate the performance of a student. The student is 
+        given the following exercise. In the following exercise, the student is 
+        given a beginning of a story. The student needs to complete it into a full 
+        story. The exercise tests the student's language abilities and creativity. 
+        The symbol *** marks the separator between the prescribed beginning and 
+        the student's completion:
+        
+        The student wrote the following story:
 
-    Please provide your general assessment about the story written by the 
-    student (the one after the *** symbol). Please be concise. Is it 
-    gramatically correct? Is it consistent with the requirements in the 
-    exercise? Is it consistent with the beginning of the story? Pay special 
-    attention to whether the student manages to complete the sentence which is 
-    split in the middle by the separator ***.
-    """
+        {story_completion}
 
-    user_prompt_2 = """
-    Now, grade the student's completion in terms of grammar, creativity, 
-    consistency, with the story's beginning and whether the plot makes sense. 
-    The scores for each of these categories should be an integer out of 10. 
-    Moreover, please provide your best guess of what the age of the student 
-    might be, as reflected from the completion. Choose from possible age 
-    groups: A: 3 or under. B: 4-5. C: 6-7. D: 8-9. E: 10-12. F: 13-16.
+        Please provide your general assessment about the story written by the 
+        student (the one after the *** symbol). Please be concise. Is it 
+        gramatically correct? Is it consistent with the requirements in the 
+        exercise? Is it consistent with the beginning of the story? Pay special 
+        attention to whether the student manages to complete the sentence which is 
+        split in the middle by the separator ***.
+        """
 
-    Format your output as follows:
-    Grammar: X/10, Creativity: X/10, Consistency: X/10, Plot: X/10, Age group: X (Y-Z)
-    """
+    if prompt_2:
+        user_prompt_2 = prompt_2
+    else:  # no structure given, use default
+        user_prompt_2 = """
+        Now, grade the student's completion in terms of grammar, creativity, 
+        consistency with the story's beginning and whether the plot makes sense. 
+        The scores for each of these categories should be an integer out of 10. 
+        Moreover, please provide your best guess of what the age of the student 
+        might be, as reflected from the completion. Choose from possible age 
+        groups: A: 3 or under. B: 4-5. C: 6-7. D: 8-9. E: 10-12. F: 13-16.
+
+        Format your output as follows:
+        Grammar: X/10, Creativity: X/10, Consistency: X/10, Plot: X/10, Age group: X (Y-Z)
+        """
     
     return user_prompt_1, user_prompt_2
 
-
-def grade_completion_with_gpt(openai_client: OpenAI, story_completion: str) -> tuple[str, str]:
+def grade_completion_with_gpt(openai_client: OpenAI, story_completion: str,
+                              prompt_1_skeleton: str = "",
+                              prompt_2: str = "") -> tuple[str, str]:
     """Grade a story completion from the SLM with GPT-4o."""
-    user_prompt_1, user_prompt_2 = construct_prompt(story_completion)
+    user_prompt_1, user_prompt_2 = construct_prompt(story_completion, prompt_1_skeleton, prompt_2)
     
     messages = [{"role": "user", "content": user_prompt_1}]  # ask to grade traits
 
@@ -170,9 +189,21 @@ def grade_completion_with_gpt(openai_client: OpenAI, story_completion: str) -> t
     return response_1, response_2
 
 
-def catch_grade_error(grade: str) -> str:
+def catch_score_error(trait: str, score: str,
+                      grades: dict[str, float]) -> None:
     """Parse a grade given from GPT-4o for errors."""
-    pass
+    if not score:  # grade list empty, i.e. no match in GPT response
+        raise Exception(f"numerical {trait} score not given")
+    if len(score) > 1:
+        raise Exception(f"more than one {trait} score given")
+    try: score = float(score[0])
+    except ValueError:
+        raise Exception(f"{trait} score not convertible to float")
+    # grade should now be float
+    if score > 10.0 or score < 0.0:  # not in range of 0-10
+        raise Exception(f"{trait} score not between 0 and 10")
+    # Score determined to be valid now.
+    grades[trait] = int(score) # probably fince, GPT-4o doesn't seem to send float scores
 
 
 def obtain_grades(grading: str) -> tuple[dict[str, float], str]:
@@ -180,47 +211,30 @@ def obtain_grades(grading: str) -> tuple[dict[str, float], str]:
     Obtain grades from GPT-4o's response.
     Second output is non-empty if an error occured.
     """
-    # scores = re.findall(r"(\d+)/10", grading)
-    # if len(scores) == 4:  # four scores given
-    #     try:  # try to convert scores from strings to floats
-    #         scores = [float(score) for score in scores]
-    #     except ValueError as e:
-    #         # Score not convertible to float, i.e. invalid score.
-    #         err_csv.writerow([prompt_id, prompt, completion, analysis,
-    #                             grading, "invalid score"])
-    #         continue
-    #     if any(score > 10.0 or score < 0.0 for score in scores):
-    #         # Invalid score
-    #         err_csv.writerow([prompt_id, prompt, completion, analysis,
-    #                             grading, "score not between 0 and 10"])
-    #         continue
-        
-    #     # Output confirmed to be valid now.
-    #     grammar, creativity, consistency, plot = scores
-    #     age_group = grading.split(':')[-1][1:]  # yields 'X (Y-Z)'
+    grades = dict()
+    try:
+        for trait in ["Grammar", "Creativity", "Consistency", "Plot"]:
+            # regex below searches for floating point values just in case # TODO: is this needed/efficient enough?
+            score = re.findall(trait + r": ([-+]?[0-9]*\.?[0-9]+)/10", grading)
+            catch_score_error(trait.lower(), score, grades)
+    except Exception as e: # TODO: is this at risk of catching another random error?
+        return None, str(e)
+    return grades, ""
 
-    #     # Write to the "valid" output CSV file.
-    #     out_csv.writerow([prompt_id, prompt, completion, analysis,
-    #                         grammar, creativity, consistency, plot,
-    #                         age_group])
-        
-    #     avg_scores += [grammar, creativity, consistency, plot]
-    #     age_groups[age_group] += 1
-    #     count_valid += 1
 
-    # else:  # four scores not given; erroneous output
-    #     err_csv.writerow([prompt_id, prompt, completion, analysis,
-    #                         grading, "four scores not given"])
-    grammar = re.findall(r"Grammar: (\d+)/10", grading)
-    grammar = float(grammar)
-
-    creativity = re.findall(r"Creativity: (\d+)/10", grading)
-    print(creativity)
-    consistency = re.findall(r"Consistency: (\d+)/10", grading)
-    print(consistency)
-    plot = re.findall(r"Plot: (\d+)/10", grading)
-    print(plot)
-    sys.exit()
+def write_to_data_outfile(data_path, avg_scores: dict[str, float], age_groups: dict[str, int]) -> None:
+    """Write averages/sums to the data outfile."""
+    with open(data_path, "+w", encoding="utf-8") as outfile:
+        # Write out average scores.
+        outfile.write("Average scores:\n")
+        outfile.write(f"\tGrammar: {avg_scores['grammar']}\n")
+        outfile.write(f"\tCreativity: {avg_scores['creativity']}\n")
+        outfile.write(f"\tConsistency: {avg_scores['consistency']}\n")
+        outfile.write(f"\tPlot: {avg_scores['plot']}\n")
+        # Write out age groups.
+        outfile.write("Age groups:\n")
+        for age_group, freq in age_groups.items():
+            outfile.write(f"\t{age_group}: {freq}\n")        
 
 
 # prompts may not be a list of strings in the end due to memory concerns, maybe a pandas dataframe or np array?
@@ -247,52 +261,30 @@ def write_to_csv(all_completions: dict, openai_client: OpenAI, out_csv, err_csv,
             analysis, grading = grade_completion_with_gpt(openai_client, completion)
 
             # Change newlines to the literal string '\n'.
-            analysis = analysis.replace("\n", "\\n")
             completion = completion.replace("\n", "\\n")
+            analysis = analysis.replace("\n", "\\n")
+            # This process does not need to be applied to `grading` as we only
+            #   seek the scores from it.
 
-            scores = re.findall(r"(\d+)/10", grading)
-            if len(scores) == 4:  # four scores given
-                try:  # try to convert scores from strings to floats
-                    scores = [float(score) for score in scores]
-                except ValueError as e:
-                    # Score not convertible to float, i.e. invalid score.
-                    err_csv.writerow([prompt_id, prompt, completion, analysis,
-                                      grading, "invalid score"])
-                    continue
-                if any(score > 10.0 or score < 0.0 for score in scores):
-                    # Invalid score
-                    err_csv.writerow([prompt_id, prompt, completion, analysis,
-                                      grading, "score not between 0 and 10"])
-                    continue
-                
-                # Output confirmed to be valid now.
-                grammar, creativity, consistency, plot = scores
+            grades, msg = obtain_grades(grading)
+            if msg:  # non-empty message, error occured
+                err_csv.writerow([prompt_id, prompt, completion, analysis, grading, msg])
+            else:  # empty message, no errors
+                # if the below line has an error, it doesn't really matter as it saves to a data outfile
+                # but TODO: maybe consider error handling for age groups
                 age_group = grading.split(':')[-1][1:]  # yields 'X (Y-Z)'
-
-                # Write to the "valid" output CSV file.
-                out_csv.writerow([prompt_id, prompt, completion, analysis,
-                                  grammar, creativity, consistency, plot,
-                                  age_group])
-                
-                avg_scores += [grammar, creativity, consistency, plot]
+                out_csv.writerow([prompt_id, prompt, completion, analysis, grades["grammar"],
+                                 grades["creativity"], grades["consistency"], grades["plot"],
+                                 age_group])
+                for trait, score in grades.items():
+                    avg_scores[trait] += score
                 age_groups[age_group] += 1
                 count_valid += 1
+    
+    # Get average scores by trait.
+    avg_scores = {trait: avg_scores[trait] / count_valid for trait in avg_scores.keys()}
 
-            else:  # four scores not given; erroneous output
-                err_csv.writerow([prompt_id, prompt, completion, analysis,
-                                  grading, "four scores not given"])
-
-    avg_scores /= count_valid
-    # avg_scores += [grammar, creativity, consistency, plot]
-    with open(data_path, "+w", encoding="utf-8") as outfile:
-        outfile.write("Average scores:\n")
-        outfile.write(f"\tGrammar: {avg_scores[0]}\n")
-        outfile.write(f"\tCreativity: {avg_scores[1]}\n")
-        outfile.write(f"\tConsistency: {avg_scores[2]}\n")
-        outfile.write(f"\tPlot: {avg_scores[3]}\n")
-        outfile.write("Age groups:\n")
-        for age_group, freq in age_groups.items():
-            outfile.write(f"\t{age_group}: {freq}\n")
+    write_to_data_outfile(data_path, avg_scores, age_groups)
 
 
 # prompts may not be a list of strings in the end due to memory concerns, maybe a pandas dataframe or np array?
@@ -303,7 +295,6 @@ def evaluate_model(model_str: str, prompts: list[str], num_completions: int, ope
     
     out_path, err_path, data_path = get_output_paths(model_str)
 
-    eval_dir = Path("evals")
     with open(out_path, "+w", newline="", encoding="utf-8") as out_csv:
         out_csv = csv.writer(out_csv, delimiter='|')  # non-comma delimiter
         with open(err_path, "+w", newline="", encoding="utf-8") as err_csv:
@@ -339,7 +330,7 @@ def main(models, prompts_str, all_official, num_completions, verbose):
             for model_str in official_models:
                 evaluate_model(model_str, prompts, num_completions, openai_client, verbose)
 
-        else:  # use our own model? TODO?
+        else: # use our own model? TODO?
             sys.exit("Error: functionality for our own model not implemented.") 
 
     return 0

@@ -1,8 +1,9 @@
+"""Reads the first 50 stories from the validation set and splices them at random points to create prompts for our model."""
+
 from datasets import load_dataset
 
 import csv
 import random 
-
 
 dataset = load_dataset("roneneldan/TinyStories")
 validation = dataset['validation'][0:50]["text"]
