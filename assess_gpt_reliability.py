@@ -5,6 +5,7 @@ from openai import OpenAI
 import numpy as np 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import time
 
 from evaluator import grade_completion_with_gpt, obtain_grades, get_all_completions, get_model
 
@@ -41,7 +42,8 @@ def grade_same_completion_repeatedly(completions, num_gradings, plot_metrics, pr
                 prompt_scores["plot"].append(grades['plot'])
 
         if plot_metrics:
-            with PdfPages('grading_frequencies.pdf') as pdf:
+            cur_time = time.time()
+            with PdfPages(f'grading_frequencies_{cur_time}.pdf') as pdf:
 
                 fig, ax = plt.subplots(2, 2, figsize=(12, 10))
                 axes = ax.flatten()
@@ -69,34 +71,7 @@ def grade_same_completion_repeatedly(completions, num_gradings, plot_metrics, pr
 
 
 def grade_same_story_with_different_prompts(completions):
-    print(grade_same_completion_repeatedly(completions, 3, False))
-
-    # custom_prompt1_skeleton = f"""
-    # Your task is to evaluate the performance of a student. The student is 
-    # given the following exercise. In the following exercise, the student is 
-    # given a beginning of a story. The student needs to complete it into a full 
-    # story. The exercise tests the student's language abilities and creativity. 
-    # The symbol ~ marks the separator between the prescribed beginning and 
-    # the student's completion:
-    
-    # The student wrote the following story:
-
-    # XXXXXXX
-
-    # Please provide your general assessment about the story written by the 
-    # student (the one after the ~ symbol). Please be concise. Is it 
-    # gramatically correct? Is it consistent with the requirements in the 
-    # exercise? Is it consistent with the beginning of the story? Pay special 
-    # attention to whether the student manages to complete the sentence which is 
-    # split in the middle by the separator ~.
-    # """
-
-    # for _, cmps in completions.items():
-    #     for i, cmp in enumerate(cmps):
-    #         cmps[i] = cmp.replace("***", "~")
-
-    # # grade the same completion with a modified prompt (in this case, we changed the delimiter)
-    # print(grade_same_completion_repeatedly(completions, 3, False, custom_prompt1_skeleton, delimiter="~"))
+    print(grade_same_completion_repeatedly(completions, 100, True))
 
     user_prompt_2 = """
     Now, grade the student's completion in terms of whether the plot makes sense, 
@@ -110,7 +85,46 @@ def grade_same_story_with_different_prompts(completions):
     Plot: X/10, Consistency: X/10, Creativity: X/10, Grammar: X/10, Age group: X (Y-Z)
     """
 
-    print(grade_same_completion_repeatedly(completions, 3, False, "", user_prompt_2))
+    print(grade_same_completion_repeatedly(completions, 100, True, "", user_prompt_2), "\n")
+
+    custom_prompt1_skeleton = f"""
+    Your task is to evaluate the performance of a student. The student is 
+    given the following exercise. In the following exercise, the student is 
+    given a beginning of a story. The student needs to complete it into a full 
+    story. The exercise tests the student's language abilities and creativity. 
+    The symbol ~ marks the separator between the prescribed beginning and 
+    the student's completion:
+    
+    The student wrote the following story:
+
+    XXXXXXX
+
+    Please provide your general assessment about the story written by the 
+    student (the one after the ~ symbol). Please be concise. Is it 
+    gramatically correct? Is it consistent with the requirements in the 
+    exercise? Is it consistent with the beginning of the story? Pay special 
+    attention to whether the student manages to complete the sentence which is 
+    split in the middle by the separator ~.
+    """
+
+    for _, cmps in completions.items():
+        for i, cmp in enumerate(cmps):
+            cmps[i] = cmp.replace("***", "~")
+
+    user_prompt_2_2 = """
+        Now, grade the student's completion in terms of grammar, creativity, 
+        consistency with the story's beginning and whether the plot makes sense. 
+        The scores for each of these categories should be an integer out of 10. 
+        Moreover, please provide your best guess of what the age of the student 
+        might be, as reflected from the completion. Choose from possible age 
+        groups: A: 3 or under. B: 4-5. C: 6-7. D: 8-9. E: 10-12. F: 13-16.
+
+        Format your output as follows:
+        Grammar: X/10, Creativity: X/10, Consistency: X/10, Plot: X/10, Age group: X (Y-Z)
+        """
+    print(grade_same_completion_repeatedly(completions, 100, True, custom_prompt1_skeleton, delimiter="~"))
+    # # grade the same completion with a modified prompt (in this case, we changed the delimiter)
+    # print(grade_same_completion_repeatedly(completions, 3, False, custom_prompt1_skeleton, delimiter="~"))
 
 def main():
     completions = get_all_completions(model, tokenizer, prompts, 1, False)

@@ -203,7 +203,7 @@ def catch_score_error(trait: str, score: str,
     if score > 10.0 or score < 0.0:  # not in range of 0-10
         raise Exception(f"{trait} score not between 0 and 10")
     # Score determined to be valid now.
-    grades[trait] = int(score) # probably fince, GPT-4o doesn't seem to send float scores
+    grades[trait] = int(score)  # GPT-4o doesn't seem to send float scores
 
 
 def obtain_grades(grading: str) -> tuple[dict[str, float], str]:
@@ -214,15 +214,18 @@ def obtain_grades(grading: str) -> tuple[dict[str, float], str]:
     grades = dict()
     try:
         for trait in ["Grammar", "Creativity", "Consistency", "Plot"]:
-            # regex below searches for floating point values just in case # TODO: is this needed/efficient enough?
+            # regex below searches for floating point values just in case
+            # TODO: double check necessity/efficiency
             score = re.findall(trait + r": ([-+]?[0-9]*\.?[0-9]+)/10", grading)
             catch_score_error(trait.lower(), score, grades)
-    except Exception as e: # TODO: is this at risk of catching another random error?
+    # TODO: is this at risk of catching another random error?
+    except Exception as e:
         return None, str(e)
     return grades, ""
 
 
-def write_to_data_outfile(data_path, avg_scores: dict[str, float], age_groups: dict[str, int]) -> None:
+def write_to_data_outfile(data_path, avg_scores: dict[str, float],
+                          age_groups: dict[str, int]) -> None:
     """Write averages/sums to the data outfile."""
     with open(data_path, "+w", encoding="utf-8") as outfile:
         # Write out average scores.
@@ -234,15 +237,19 @@ def write_to_data_outfile(data_path, avg_scores: dict[str, float], age_groups: d
         # Write out age groups.
         outfile.write("Age groups:\n")
         for age_group, freq in age_groups.items():
-            outfile.write(f"\t{age_group}: {freq}\n")        
+            outfile.write(f"\t{age_group}: {freq}\n")
 
 
-# prompts may not be a list of strings in the end due to memory concerns, maybe a pandas dataframe or np array?
-def write_to_csv(all_completions: dict, openai_client: OpenAI, out_csv, err_csv, data_path: Path):
-    """Write results of evaluation to three files: out, err (for errors), and data (for stats)."""
+# Maybe change `prompts` away from a list of strings for memory purposes
+def write_to_csv(all_completions: dict, openai_client: OpenAI,
+                 out_csv, err_csv, data_path: Path):
+    """
+    Write results of evaluation to three files:
+    out, err (for errors), and data (for stats).
+    """
     # Write headers to both CSV files.
     out_headers = ["prompt_id", "prompt", "completion", "analysis", "grammar",
-               "creativity", "consistency", "plot", "age_group"]
+                   "creativity", "consistency", "plot", "age_group"]
     out_csv.writerow(out_headers)
     err_headers = ["prompt_id", "prompt", "completion", "analysis", "grading",
                    "reason_for_error"]
@@ -258,7 +265,8 @@ def write_to_csv(all_completions: dict, openai_client: OpenAI, out_csv, err_csv,
         prompt = prompt.replace("\n", "\\n")
         for completion in completions:
             # Obtain grades from GPT-4o.
-            analysis, grading = grade_completion_with_gpt(openai_client, completion)
+            analysis, grading = grade_completion_with_gpt(openai_client,
+                                                          completion)
 
             # Change newlines to the literal string '\n'.
             completion = completion.replace("\n", "\\n")
@@ -268,38 +276,45 @@ def write_to_csv(all_completions: dict, openai_client: OpenAI, out_csv, err_csv,
 
             grades, msg = obtain_grades(grading)
             if msg:  # non-empty message, error occured
-                err_csv.writerow([prompt_id, prompt, completion, analysis, grading, msg])
+                err_csv.writerow([prompt_id, prompt, completion,
+                                  analysis, grading, msg])
             else:  # empty message, no errors
-                # if the below line has an error, it doesn't really matter as it saves to a data outfile
-                # but TODO: maybe consider error handling for age groups
+                # if the below line has an error, it doesn't really matter as
+                #   it saves to a data outfile
+                # but we could consider error handling for age groups
                 age_group = grading.split(':')[-1][1:]  # yields 'X (Y-Z)'
-                out_csv.writerow([prompt_id, prompt, completion, analysis, grades["grammar"],
-                                 grades["creativity"], grades["consistency"], grades["plot"],
-                                 age_group])
+                out_csv.writerow([prompt_id, prompt, completion, analysis,
+                                  grades["grammar"], grades["creativity"],
+                                  grades["consistency"], grades["plot"],
+                                  age_group])
                 for trait, score in grades.items():
                     avg_scores[trait] += score
                 age_groups[age_group] += 1
                 count_valid += 1
-    
+
     # Get average scores by trait.
-    avg_scores = {trait: avg_scores[trait] / count_valid for trait in avg_scores.keys()}
+    avg_scores = {trait: avg_scores[trait] / count_valid
+                  for trait in avg_scores.keys()}
 
     write_to_data_outfile(data_path, avg_scores, age_groups)
 
 
-# prompts may not be a list of strings in the end due to memory concerns, maybe a pandas dataframe or np array?
-def evaluate_model(model_str: str, prompts: list[str], num_completions: int, openai_client: OpenAI, verbose: bool):
+# Could change `prompts` to a numpy arrow or pandas DF instead of a list
+def evaluate_model(model_str: str, prompts: list[str], num_completions: int,
+                   openai_client: OpenAI, verbose: bool) -> None:
     """Evaluate a SLM - combines all parts."""
     model, tokenizer = get_model(model_str, verbose)
-    all_completions = get_all_completions(model, tokenizer, prompts, num_completions, verbose)
-    
+    all_completions = get_all_completions(model, tokenizer, prompts,
+                                          num_completions, verbose)
+
     out_path, err_path, data_path = get_output_paths(model_str)
 
     with open(out_path, "+w", newline="", encoding="utf-8") as out_csv:
         out_csv = csv.writer(out_csv, delimiter='|')  # non-comma delimiter
         with open(err_path, "+w", newline="", encoding="utf-8") as err_csv:
             err_csv = csv.writer(err_csv, delimiter='|')  # non-comma delimiter
-            write_to_csv(all_completions, openai_client, out_csv, err_csv, data_path)
+            write_to_csv(all_completions, openai_client,
+                         out_csv, err_csv, data_path)
 
 
 @click.command()
@@ -320,20 +335,24 @@ def main(models, prompts_str, all_official, num_completions, verbose):
 
     if models:  # input model specified
         for model_str in models:  # since option can be used multiple times
-            evaluate_model(model_str, prompts, num_completions, openai_client, verbose)
+            evaluate_model(model_str, prompts, num_completions,
+                           openai_client, verbose)
 
     else:  # input model not specified
         if (all_official):
-            if __debug__: sys.exit("Debug: can't try to evaluate all models")
+            if __debug__:
+                sys.exit("Debug: can't try to evaluate all models")
             official_models = [f"roneneldan/TinyStories-{n}M"
                                for n in [1, 3, 8, 28, 33]]
             for model_str in official_models:
-                evaluate_model(model_str, prompts, num_completions, openai_client, verbose)
+                evaluate_model(model_str, prompts, num_completions,
+                               openai_client, verbose)
 
-        else: # use our own model? TODO?
-            sys.exit("Error: functionality for our own model not implemented.") 
+        else:  # use our own model? TODO?
+            sys.exit("Error: functionality for our own model not implemented.")
 
     return 0
+
 
 if __name__ == "__main__":
     main()
